@@ -16,11 +16,6 @@ public class Gun : MonoBehaviour
     public ParticleSystem muzzleFlash;
     public GameObject impactEffect;
 
-    private void Awake()
-    {
-        //muzzleFlash = GetComponentInChildren<ParticleSystem>();
-    }
-
     void Update()
     {
         if (PauseMenu.GameIsPaused) return;
@@ -46,11 +41,8 @@ public class Gun : MonoBehaviour
 
     void Shoot()
     {
-        RaycastHit hit;
-        if (Physics.Raycast(cam.transform.position, cam.transform.forward, out hit, range, hittable))
+        if (Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit, range, hittable))
         {
-            Debug.Log(hit.transform.name);
-
             if (hit.rigidbody != null)
             {
                 hit.rigidbody.AddForceAtPosition(-hit.normal * impactForce, hit.point);

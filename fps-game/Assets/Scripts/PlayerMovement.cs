@@ -2,6 +2,15 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+/*
+ * TODO
+ * 
+ * sprint fov like wr
+ * 
+ * downforce
+ * 
+*/
+
 public class PlayerMovement : MonoBehaviour
 {
     #region
@@ -16,10 +25,11 @@ public class PlayerMovement : MonoBehaviour
     public float crouchMultipler = 0.5f;
     public float wallrunMultipler = 1.2f;
     public PhysicMaterial physMat;
+    public float maxSlopeAngle;
 
     [Header("Crouch/Slide")]
     Vector3 playerScale;
-    public Vector3 crouchScale = new Vector3(1, 0.5f, 1);
+    public Vector3 crouchScale = new(1, 0.5f, 1);
     public float slideForce = 400f;
     public bool crouching;
 
@@ -35,7 +45,7 @@ public class PlayerMovement : MonoBehaviour
     public float jumpCooldown = 0.1f;
     public float crouchJumpMultipler = 0.5f;
     public bool doubleJump = true;
-    bool doubleJumped;
+    public bool doubleJumped;
     public float doubleJumpMultipler = 0.3f;
 
 
@@ -53,8 +63,6 @@ public class PlayerMovement : MonoBehaviour
     Vector2 movement;
 
     Vector3 moveDirection;
-    Vector3 slopeMoveDirection;
-    Vector3 slopeVel;
 
     Rigidbody rb;
     Wallrun wr;
@@ -64,26 +72,8 @@ public class PlayerMovement : MonoBehaviour
     public float groundDistance = 0.4f;
     public LayerMask groundMask;
     public Transform groundCheck;
-    public float maxSlopeAngle;
-    public float minSlopeAngle;
 
-    RaycastHit slopeHit;
-    float surfaceAngle;
     #endregion
-
-    private bool OnSlope()
-    {
-        if (Physics.Raycast(groundCheck.position, Vector3.down, out slopeHit, groundDistance, groundMask))
-        {
-            surfaceAngle = Vector3.Angle(Vector3.up, slopeHit.normal);
-
-            if (surfaceAngle != 0)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 
     private void Start()
     {
@@ -101,8 +91,6 @@ public class PlayerMovement : MonoBehaviour
         MyInput();
         ControlDrag();
         ControlSpeed();
-
-        CalculateSlopeMoveDir();
     }
 
     void CheckGrounded()
@@ -113,11 +101,6 @@ public class PlayerMovement : MonoBehaviour
         {
             doubleJumped = false;
         }
-    }
-
-    void CalculateSlopeMoveDir()
-    {
-        slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, slopeHit.normal);
     }
 
     void MyInput()
@@ -190,23 +173,13 @@ public class PlayerMovement : MonoBehaviour
         transform.localScale = crouchScale;
         transform.position = new Vector3(transform.position.x, transform.position.y - (playerScale.y - crouchScale.y), transform.position.z);
         camHolder.UpdatePos();
-        bool onSlope = OnSlope();
         //sliding
         if (rb.velocity.magnitude > 0.5f && isGrounded && movement.y == 1 && player.TrySlide())
         {
-            if (onSlope)
-            {
-                rb.AddForce(Vector3.ProjectOnPlane(orientation.transform.forward, slopeHit.normal) * slideForce, ForceMode.Impulse);
-            }
-            else
-            {
-                rb.AddForce(orientation.transform.forward * slideForce, ForceMode.Impulse);
-            }
+            Physics.Raycast(groundCheck.position, Vector3.down, out RaycastHit slopeHit, groundDistance, groundMask);
+            float slopeAngle = Vector3.Angle(Vector3.up, slopeHit.normal);
+            rb.AddForce((slopeAngle != 0 ? Vector3.ProjectOnPlane(orientation.transform.forward, slopeHit.normal) : orientation.transform.forward) * slideForce, ForceMode.Impulse);
         }
-        //if (onSlope && surfaceAngle > minSlopeAngle)
-        //{
-        //    slopeVel = rb.velocity;
-        //}
     }
 
     private void StopCrouch()
@@ -216,7 +189,6 @@ public class PlayerMovement : MonoBehaviour
         transform.localScale = playerScale;
         transform.position = new Vector3(transform.position.x, transform.position.y + (playerScale.y - crouchScale.y), transform.position.z);
         camHolder.UpdatePos();
-        slopeVel = Vector3.zero;
     }
 
     private void ControlSpeed()
@@ -270,61 +242,41 @@ public class PlayerMovement : MonoBehaviour
 
     private void MovePlayer()
     {
-        Vector3 movedir = FindMoveDir();
-        ApplySlopeForce();
+        //slope shit
+        Physics.Raycast(groundCheck.position, Vector3.down, out RaycastHit slopeHit, groundDistance, groundMask);
+        float slopeAngle = Vector3.Angle(Vector3.up, slopeHit.normal);
+        bool onslope = slopeAngle != 0;
+        if (onslope)
+        {
+            if (slopeAngle < maxSlopeAngle)
+            {
+                Vector3 gravityForce = Physics.gravity - Vector3.Project(Physics.gravity, slopeHit.normal);
+                rb.AddForce(-gravityForce, ForceMode.Acceleration);
+            }
+        }
 
-        rb.AddForce(movedir, ForceMode.Acceleration);
-    }
+        //move dir
+        Vector3 movedir = Vector3.zero;
 
-    Vector3 FindMoveDir()
-    {
-        bool onSlope = OnSlope();
+        Vector3 slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, slopeHit.normal);
 
         if (wr.wallrunning)
         {
-            return orientation.forward * movement.y * moveSpeed * movementMultiplier * wallrunMultipler;
+            movedir = movement.y * movementMultiplier * moveSpeed * wallrunMultipler * orientation.forward;
         }
-        if (crouching && isGrounded && !onSlope)
+        if (crouching && isGrounded)
         {
-            return moveDirection.normalized * moveSpeed * movementMultiplier * crouchMultipler;
+            movedir = crouchMultipler * movementMultiplier * moveSpeed * (onslope ? slopeMoveDirection : moveDirection).normalized;
         }
-        if (crouching && isGrounded && onSlope)
+        if (isGrounded && !crouching)
         {
-            return slopeMoveDirection.normalized * moveSpeed * movementMultiplier * crouchMultipler;
-        }
-        if (isGrounded && !onSlope)
-        {
-            physMat.dynamicFriction = 0f;
-            slopeVel = Vector3.zero;
-            return moveDirection.normalized * moveSpeed * movementMultiplier;
-        }
-        if (isGrounded && onSlope)
-        {
-            return slopeMoveDirection.normalized * moveSpeed * movementMultiplier;
+            movedir = movementMultiplier * moveSpeed * (onslope ? slopeMoveDirection : moveDirection).normalized;
         }
         if (!isGrounded)
         {
-            slopeVel = Vector3.zero;
-            return moveDirection.normalized * moveSpeed * movementMultiplier * airMultipler;
+            movedir = airMultipler * movementMultiplier * moveSpeed * moveDirection.normalized;
         }
 
-        return Vector3.zero;
-    }
-
-    void ApplySlopeForce()
-    {
-        if (isGrounded && OnSlope())
-        {
-            if (surfaceAngle < maxSlopeAngle)
-                physMat.dynamicFriction = 1f;
-            else
-                slopeVel += Vector3.down * 0.03f;
-            if (crouching && surfaceAngle > minSlopeAngle)
-            {
-                physMat.dynamicFriction = 0.15f;
-                slopeVel += Vector3.down * 0.03f;
-            }
-            rb.AddForce(slopeVel, ForceMode.Impulse);
-        }
+        rb.AddForce(movedir, ForceMode.Acceleration);
     }
 }

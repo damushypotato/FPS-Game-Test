@@ -28,6 +28,8 @@ public class Wallrun : MonoBehaviour
 
     public bool wallrunning;
 
+    public LayerMask wallrunable; 
+
     private void Start()
     {
         rb = GetComponent<Rigidbody>();
@@ -42,11 +44,12 @@ public class Wallrun : MonoBehaviour
 
     void CheckWall()
     {
-        wallLeft = Physics.Raycast(transform.position, -orientation.right, out leftWallHit, wallDistance);
-        wallRight = Physics.Raycast(transform.position, orientation.right, out rightWallHit, wallDistance);
+        wallLeft = Physics.Raycast(transform.position, -orientation.right, out leftWallHit, wallDistance, wallrunable);
+        wallRight = Physics.Raycast(transform.position, orientation.right, out rightWallHit, wallDistance, wallrunable);
     }
 
     private void Update()
+
     {
         if (PauseMenu.GameIsPaused) return;
 
@@ -54,11 +57,11 @@ public class Wallrun : MonoBehaviour
 
         if (CanWallRun())
         {
-            if (wallLeft)
+            if (wallLeft && !wallRight)
             {
                 StartWallRun();
             }
-            else if (wallRight)
+            else if (wallRight && !wallLeft)
             {
                 StartWallRun();
             }
@@ -91,7 +94,7 @@ public class Wallrun : MonoBehaviour
             movement.physMat.dynamicFriction = 0f;
         }
 
-        rb.AddForce(Vector3.up * Physics.gravity.y * wrGravScale, ForceMode.Acceleration);
+        rb.AddForce(200 * Physics.gravity.y * Time.deltaTime * wrGravScale * Vector3.up, ForceMode.Acceleration);
 
         camEffects.LerpFovWallrun(true);
 
@@ -110,17 +113,20 @@ public class Wallrun : MonoBehaviour
             {
                 Vector3 wallrunJumpDir = transform.up + leftWallHit.normal;
                 rb.velocity = new Vector3(rb.velocity.x, 0, rb.velocity.z);
-                rb.AddForce(wallrunJumpDir * wallJumpForce * 100, ForceMode.Force);
+                rb.AddForce(100 * wallJumpForce * wallrunJumpDir, ForceMode.Force);
                 movement.JumpCooldown();
             }
             else if (wallRight)
             {
                 Vector3 wallrunJumpDir = transform.up + rightWallHit.normal;
                 rb.velocity = new Vector3(rb.velocity.x, 0, rb.velocity.z);
-                rb.AddForce(wallrunJumpDir * wallJumpForce * 100, ForceMode.Force);
+                rb.AddForce(100 * wallJumpForce * wallrunJumpDir, ForceMode.Force);
                 movement.JumpCooldown();
             }
         }
+
+        movement.doubleJumped = false;
+        print(1);
     }
 
     void StopWallRun()
@@ -131,6 +137,8 @@ public class Wallrun : MonoBehaviour
 
         camEffects.LerpFovWallrun(false);
         camEffects.LerpTiltWallrun(0);
+
+        movement.physMat.dynamicFriction = 0f;
     }
 
 }
